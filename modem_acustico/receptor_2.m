@@ -1,0 +1,178 @@
+function [x,l] = receptor_2(yrx, TB, Fp, Fa)
+%%%%%%%%%%%%%%%%%%%%%%  Entrada do receptor   %%%%%%%%%%%%%%%%
+%   yrx -- sinal de audio capturado
+%   TB  -- Taxa de bits (Bits/s)
+%   Fp  -- Frequencia da portadora (Hz)
+%   Fa  -- Frequencia de amostragem (Hz)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Saida:
+%   x   -- Vetor de bits da mensagem (payload)
+%   l   -- Comprimento da mensagem em bytes (excluindo o byte de comprimento)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Pacotes de software
+pkg load signal;
+pkg load communications;
+
+%% Inicialização
+l = 0;
+x = [];
+
+if isempty(yrx)
+    warning('receptor_2:emptyInput', 'Sinal de entrada vazio.');
+    return;
+end
+
+len_yrx = length(yrx);
+t = (0:len_yrx - 1)'/Fa;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%      Sincronizacao com Costas Loop   	    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+fle = 64;
+h = fir1(fle, 0.001);
+mu = 0.03;
+theta = zeros(len_yrx, 1);
+theta(1) = 0;
+
+zs_buffer = zeros(fle+1, 1);
+zc_buffer = zeros(fle+1, 1);
+h_flip = flipud(h(:));
+
+for k = 1:len_yrx - 1
+  I_k = 2 * yrx(k) * cos(2 * pi * Fp * t(k) + theta(k));
+  Q_k = 2 * yrx(k) * sin(2 * pi * Fp * t(k) + theta(k));
+
+  zs_buffer = [zs_buffer(2:end); Q_k];
+  zc_buffer = [zc_buffer(2:end); I_k];
+
+  lpfs = h_flip' * zs_buffer;
+  lpfc = h_flip' * zc_buffer;
+
+  theta(k+1) = theta(k) - mu * lpfs * lpfc;
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%               Demodulacao Coerente             %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+y_demod = yrx .* cos(2 * pi * Fp * t + theta);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%      Sincronizacao de Simbolo (Early-Late Gate)             %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+yf = y_demod;
+st = round(Fa / TB);
+d = 1;
+err = 0.01;
+si = [];
+t_samp = st;
+max_idx = len_yrx - st + 1;
+
+while t_samp <= max_idx
+    if t_samp > d && (t_samp + d) <= len_yrx
+        dif = abs(yf(t_samp - d)) - abs(yf(t_samp + d));
+
+        if dif > err
+            t_samp = t_samp - 1;
+        elseif dif < -err
+            t_samp = t_samp + 1;
+        end
+
+        si = [si; t_samp];
+    end
+    t_samp = t_samp + st;
+end
+
+if isempty(si)
+    warning('receptor_2:symbolSync', 'Falha na sincronização de símbolo.');
+    return;
+end
+
+y_simbolo = yf(si);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%      Decodificacao de Bits (BPSK)               %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+x_demod = (y_simbolo > 0)';
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%     Sincronizacao do Quadro (SFD)                %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+SFD = [1 1 0 0 1 1 1 0 0 0 1 1 1 1 0 0 0 0 1 1 1 0 0 0 1 1 0 0 1 0 1 0];
+SFD_bipolar = SFD * 2 - 1;
+x_bipolar = x_demod * 2 - 1;
+
+xc = xcorr(SFD_bipolar, x_bipolar);
+[a_max, b_idx] = max(abs(xc));
+
+if xc(b_idx) < 0
+    x_demod = ~x_demod;
+end
+
+start_idx_x = (length(x_demod) - length(SFD)) - (b_idx - length(SFD)) + 1;
+start_payload_idx = start_idx_x + length(SFD);
+
+if start_payload_idx > length(x_demod)
+    warning('receptor_2:frameSync', 'SFD encontrado muito no final.');
+    return;
+end
+
+bitstream_com_hamming = x_demod(start_payload_idx:end);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%   Decodificacao Hamming (7,4)                  %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+x_decodificado = hamming_decode(bitstream_com_hamming);
+
+disp(['Número de bits após Hamming: ' num2str(length(x_decodificado))]);
+disp(['Primeiros 16 bits: ' num2str(x_decodificado(1:min(16,end)))]);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%   Remoção de Cabeçalho e Payload               %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+if length(x_decodificado) < 8
+    warning('receptor_2:short', 'Bitstream muito curto.');
+    return;
+end
+
+length_byte = x_decodificado(1:8);
+l = double(bi2de(length_byte, 'right-msb'));
+
+l_max_bytes = floor(length(x_decodificado)/8) - 1;
+
+if l < 0 || l > l_max_bytes
+    warning('receptor_2:badLength', 'Comprimento inválido.');
+    return;
+end
+
+expected_bits = 8 * (l + 1);
+expected_bits = min(expected_bits, length(x_decodificado));
+
+if expected_bits < 8
+    x = [];
+    l = 0;
+    return;
+end
+
+x = x_decodificado(9:expected_bits);
+
+endfunction
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Função de Decodificação Hamming (7,4)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function decoded_bits = hamming_decode(msg_bits)
+    k = 4;
+    n = 7;
+    len_msg = length(msg_bits);
+    num_blocks = floor(len_msg / n);
+    decoded_bits = [];
+
+    for i = 1:num_blocks
+        block = msg_bits((i-1)*n + 1 : i*n);
+        data_block = decode(block(:), n, k, 'hamming')';
+        decoded_bits = [decoded_bits data_block];
+    end
+end
