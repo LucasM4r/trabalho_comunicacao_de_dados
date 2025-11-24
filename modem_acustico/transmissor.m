@@ -30,7 +30,7 @@ PRE_SYNC_PATTERN = upsample([1 0 1 0 1 0 1 0 1 0 1 0 1 0 1], 2); % 30 bits (15 s
 
 % Se o preâmbulo é usado apenas para a detecção de energia e sincronização de clock,% Adotando a sequência original, mas renomeando para clareza:
 PREAMBLE = [ones(1, 10) upsample(ones(1, 15), 2)];
-
+fprintf('PREAMBULO %d\n', length(PREAMBLE));
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% 1. Conversão de Texto para Bits e Codificação
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -152,11 +152,20 @@ fprintf('Byte de comprimento sem correcao: %d\n', l_raw);
 fprintf('Mensagem sem correção (bits): ');
 disp(num2str(raw_payload_bits));
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%   Remoção do PREAMBLE_FINAL                    %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+num_bits_data = (l_raw + 1) * 8;
 
+num_blocks_valid = ceil(num_bits_data / k);
+num_bits_hamming_valid = num_blocks_valid * n;
+
+num_bits_hamming_valid = min(num_bits_hamming_valid, length(bitstream_com_hamming));
+bitstream_valido = bitstream_com_hamming(1:num_bits_hamming_valid);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %   Decodificacao Hamming (7,4)                  %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-x_decodificado = hamming_decode(bitstream_com_hamming);
+x_decodificado = hamming_decode(bitstream_valido);
 
 disp(['Número de bits após Hamming: ' num2str(length(x_decodificado))]);
 disp(['Primeiros 16 bits: ' num2str(x_decodificado(1:min(16,end)))]);
@@ -200,8 +209,10 @@ function decoded_bits = hamming_decode(msg_bits)
     k = 4;
     n = 7;
     len_msg = length(msg_bits);
+    fprintf('Comprimento da Mensagem %d\n: ', len_msg)
     num_blocks = floor(len_msg / n);
     decoded_bits = [];
+    fprintf('Numero de blocos %d\n: ', num_blocks);
 
     for i = 1:num_blocks
         block = msg_bits((i-1)*n + 1 : i*n);
@@ -224,5 +235,6 @@ function decoded_bits = hamming_decode(msg_bits)
 
         decoded_bits = [decoded_bits data_block];
     end
+    
 end
 

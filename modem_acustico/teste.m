@@ -1,4 +1,7 @@
-msg = "OLA";
+clc;
+clear all;
+
+msg = "Engenharia";
 RB = 100;       % taxa de bits
 Fp = 2000;      % frequencia da portadora
 Fa = 8000;      % taxa de amostragem da placa de som
