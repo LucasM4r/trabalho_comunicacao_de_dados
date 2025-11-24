@@ -28,9 +28,7 @@ SFD = [1 1 0 0 1 1 1 0 0 0 1 1 1 1 0 0 0 0 1 1 1 0 0 0 1 1 0 0 1 0 1 0]; % 32 bi
 PRE_UNSYNC = ones(1, 10);
 PRE_SYNC_PATTERN = upsample([1 0 1 0 1 0 1 0 1 0 1 0 1 0 1], 2); % 30 bits (15 símbolos x 2)
 
-% Se o preâmbulo é usado apenas para a detecção de energia e sincronização de clock,
-% o original pode ser simplificado (original: [ones(1,10) upsample(ones(1,15),2)]).
-% Adotando a sequência original, mas renomeando para clareza:
+% Se o preâmbulo é usado apenas para a detecção de energia e sincronização de clock,% Adotando a sequência original, mas renomeando para clareza:
 PREAMBLE = [ones(1, 10) upsample(ones(1, 15), 2)];
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -126,7 +124,8 @@ end
 
 
 function coded_bits = hamming_encode(msg_bits)
-% hamming_encode - Codifica um vetor de bits usando Hamming (7,4)k = 4;  % Número de bits de dados
+% hamming_encode - Codifica um vetor de bits usando Hamming (7,4)
+k = 4;  % Número de bits de dados
 n = 7;  % Tamanho do bloco codificado
 len_msg = length(msg_bits);
 num_blocks = ceil(len_msg / k);

@@ -121,6 +121,39 @@ end
 bitstream_com_hamming = x_demod(start_payload_idx:end);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%   Mensagem SEM correção (removendo ECC)       %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+k = 4;      % dados
+n = 7;      % bloco Hamming
+
+num_blocks_raw = floor(length(bitstream_com_hamming) / n);
+raw_payload_bits = [];
+
+for i = 1:num_blocks_raw
+    bloco = bitstream_com_hamming((i-1)*n + 1 : i*n);
+
+    % Extrair somente os dados sem corrigir
+    % Ordem do Hamming(7,4): [p1 p2 d1 p3 d2 d3 d4]
+    d1 = bloco(3);
+    d2 = bloco(5);
+    d3 = bloco(6);
+    d4 = bloco(7);
+
+    raw_payload_bits = [raw_payload_bits d1 d2 d3 d4];
+end
+
+disp('--- Mensagem interpretada ANTES da correcao (sem ECC)---');
+
+length_byte_raw = raw_payload_bits(1:8);
+l_raw = double(bi2de(length_byte_raw, 'right-msb'));
+fprintf('Byte de comprimento sem correcao: %d\n', l_raw);
+
+fprintf('Mensagem sem correção (bits): ');
+disp(num2str(raw_payload_bits));
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %   Decodificacao Hamming (7,4)                  %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 x_decodificado = hamming_decode(bitstream_com_hamming);
@@ -172,7 +205,24 @@ function decoded_bits = hamming_decode(msg_bits)
 
     for i = 1:num_blocks
         block = msg_bits((i-1)*n + 1 : i*n);
+
+        % Extrair os 4 bits de dados do bloco original
+        dados_recebidos = block([3 5 6 7]);   % [d1 d2 d3 d4]
+
+        % Decodificar
         data_block = decode(block(:), n, k, 'hamming')';
+
+        % Mostrar bloco recebido
+        fprintf('Bloco %d recebido : %s\n', i, num2str(block));
+
+        % Testar se houve correção
+        if isequal(dados_recebidos, data_block)
+            fprintf('Bloco %d corrigido: não houve correção\n', i);
+        else
+            fprintf('Bloco %d corrigido: %s\n', i, num2str(data_block));
+        end
+
         decoded_bits = [decoded_bits data_block];
     end
 end
+
